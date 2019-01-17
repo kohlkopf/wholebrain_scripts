@@ -55,17 +55,18 @@ save(neuron_seg, brain_seg, file=paste0(wd, "/saved_filters/initial_filters.RDat
 load(file=paste0(wd, "/saved_filters/initial_filters.RData"))
 brain_seg$filter$resize<-0.08
 #or 12499
-brain_seg$filter$Max<-25000
+brain_seg$filter$Max<-35000
 
-datasets <- NULL
-#load('~/m_urine/datasets/up_to_image_127_accumulated_dataset.RData')
+#datasets <- NULL
+load(paste0(wd, '/datasets/up_to_image_46_accumulated_dataset.RData'))
 
 nrow(table(datasets$image))
 
 dev.off()
 
-#begin with image 36
-for(i in 36:length(images)){
+#begin with image 37
+coord[43] <- 2.625 #bregma 2.705 atlas was busted
+for(i in 51:length(images)){
   #xpos = 200, ypos = -50, width = 35, height = 15
     #x11()
     seg<-segment(images[i], display=FALSE, filter = neuron_seg$filter, channel=2)
@@ -104,7 +105,7 @@ for(i in 36:length(images)){
 }
 
 #remove neurons from datasets
-datasets<-datasets[!(datasets$image %in% tools::file_path_sans_ext(basename(images[93]))), ]
+datasets<-datasets[!(datasets$image %in% tools::file_path_sans_ext(basename(images[46]))), ]
 
 #---
 #---
