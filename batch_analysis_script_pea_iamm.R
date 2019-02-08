@@ -18,16 +18,16 @@ smp<-0.06
 # http:/mouse.brain-map.org/experiment/siv/?imageId=102162070
 # begin when the frontal cortex comes in to view
 
-inspected <- c(36, 60, 80, 120, 135)
+inspected <- c(40, 60, 80, 120, 135)
 
 for(i in 1:length(inspected)){imshow(images[inspected[i]])}
 
 #lapply(X=inspected, function(x){makewebmap(images[x])})
 
-imshow(images[45])
+imshow(images[40])
 
 #assign brain coordinates for inspected sections.
-smp.coord<-c(3.245, 1.345, 0.020, -2.255, -3.280)
+smp.coord<-c(2.845, 1.345, 0.020, -2.255, -3.280)
 
 #now we can just generate all the intermediate coordinates automatically with the map.to.atlas() function
 #assign brain coordinates for all sections in this brain.
@@ -39,12 +39,12 @@ coord <- map.to.atlas(image.number=inspected,
 )
 
 #plot the coords to ensure nothing is way off
-# we do observe a bump at index 37, not sure what is going on, bregma has been confirmed
 plot(coord[0:155])
 
 
 #either develop filters on 33 or use old filters below
 neuron_seg <- segment(images[45], channel=2)
+neuron_seg$filter
 brain_seg <- segment(images[45], channel=0)
 brain_seg$filter$resize<-0.08
 #brain_seg$filter$brain.threshold <- 112
@@ -52,21 +52,29 @@ if(!dir.exists(file.path(wd, "saved_filters"))){dir.create(file.path(wd, "saved_
 save(neuron_seg, brain_seg, file=paste0(wd, "/saved_filters/initial_filters.RData"))
 
 #use old filters
-load(file=paste0(wd, "/saved_filters/initial_filters.RData"))
+load(file=paste0(wd, "/saved_filters/initial_filters_qiang.RData"))
 brain_seg$filter$resize<-0.08
 #or 12499
 brain_seg$filter$Max<-35000
 
+
+
+
+# Where did you leave off?
+
+load_index <- 140
+next_index <- load_index+1
+
 #datasets <- NULL
-load(paste0(wd, '/datasets/up_to_image_46_accumulated_dataset.RData'))
+load(paste0(wd, '/datasets/up_to_image_', load_index, '_accumulated_dataset.RData'))
 
 nrow(table(datasets$image))
 
 dev.off()
 
 #begin with image 37
-coord[43] <- 2.625 #bregma 2.705 atlas was busted
-for(i in 51:length(images)){
+#coord[42] <- coord[41] #bregma 2.705 atlas was busted
+for(i in next_index:length(images)){
   #xpos = 200, ypos = -50, width = 35, height = 15
     #x11()
     seg<-segment(images[i], display=FALSE, filter = neuron_seg$filter, channel=2)
@@ -104,8 +112,8 @@ for(i in 51:length(images)){
     dev.off()
 }
 
-#remove neurons from datasets
-datasets<-datasets[!(datasets$image %in% tools::file_path_sans_ext(basename(images[46]))), ]
+c#remove neurons from datasets
+datasets<-datasets[!(datasets$image %in% tools::file_path_sans_ext(basename(images[128]))), ]
 
 #---
 #---
@@ -124,14 +132,45 @@ datasets<-datasets[!(datasets$image %in% tools::file_path_sans_ext(basename(imag
 #---
 #---
 
-# Everything down here is for visualization and data summary. the datasets object should have all of the segmentation information.
+# If you've been a bit sloppy and have partial datasets, below will accumulated all of the neurons and exclude duplicates
+# It goes through each saved dataset and adds any new rows (based on the image name) it won't overwrite, so it takes the orig
+# read in datasets backwards!
 
-datasets$animal <- "PEA_and_IAMM"
+#load in all of the partial datasets, rename the object once loaded
+i=1
+suffices <- sprintf("%0.3d", 1:length(file_list))
+for(item in file_list){
+  load(item);
+  assign(paste0("datasets_", suffices[i]), datasets);
+  i<-i+1;
+}
+
+j=1
+#loop through all of the loaded dataset dataframes
+for(dataset in mget(sort(grep("^datasets_[0-9]+", ls(), value=TRUE), decreasing=TRUE))){
+  #initialize datasets_accum dataframe
+  if(j==1){datasets_accum <- dataset;j<-1;};
+  #merge the datasets verticaly, subset non-accum df to prevent duplicates
+  datasets_accum <- rbind(datasets_accum, dataset[!(dataset$image %in% datasets_accum$image),]);
+  j<-j+1;
+}
+
+paste0(j, " datasets were merged.")
+save(file=paste0(wd, "/datasets/datasets_accum.Robj"), datasets)
+
+
+
+
+# Everything down here is for visualization and data summary. The datasets object should have all of the segmentation information.
+
+datasets_accum <- datasets
+
+datasets_accum$animal <- "PEA_and_IAMM"
 
 #remove the first few sections, code issues in wholebrain
-datasets_right$right.hemisphere<-TRUE
+#datasets_right$right.hemisphere<-TRUE
 
-glassbrain(datasets, cex=4, plane="coronal", laterality=FALSE)
+glassbrain(datasets, cex=4, plane="coronal")
 #plot specific slides to demonstrate wholebrain plotting willy nilly
 glassbrain(datasets[datasets$image %in% tools::file_path_sans_ext(basename(images[40:50])),], cex=4, plane="coronal")
 coord[40:50]
