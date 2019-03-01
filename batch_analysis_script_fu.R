@@ -1,13 +1,12 @@
-# script for Qiangs PEA IAMM brain, run on Windows with the RStudio viewer pane as the graphics device.
+# script for Qiangs FU brain, run on Windows with the RStudio viewer pane as the graphics device.
 
 # It is necessary to interact wtih this script
-wd <- "D:/qiq/2019-01-07_MO_PEA_IAMM_MIX/Flipped/IAMM"
+wd <- "D:/qiq/2019-01-07_MO_PEA_IAMM_MIX/Flipped/FU"
 setwd(wd)
 library(wholebrain)
 
 # get listing
 images <- get.images(paste0(wd, "/images"))
-
 
 #set spacing between periods in millimeters
 smp<-0.06
@@ -16,20 +15,20 @@ smp<-0.06
 # http:/mouse.brain-map.org/experiment/siv/?imageId=102162070
 # begin when the frontal cortex comes in to view
 
-inspected <- c(40, 64, 83, 105, 135)
+inspected <- c(47, 66, 84, 101, 133)
 
 for(i in 1:length(inspected)){imshow(images[inspected[i]])}
 
-inspected <- c(length(images)-10:length(images))
+#inspected <- c(length(images)-10:length(images))
 
-for(i in 1:length(inspected)){imshow(images[inspected[i]])}
+#for(i in 1:length(inspected)){imshow(images[inspected[i]])}
 
 #lapply(X=inspected, function(x){makewebmap(images[x])})
 
 imshow(images[135])
 
 #assign brain coordinates for inspected sections.
-smp.coord<-c(2.845, 1.345, 0.245, -0.955, -3.180)
+smp.coord<-c(3.145, 1.345, 0.145, -0.955, -2.98)
 
 #now we can just generate all the intermediate coordinates automatically with the map.to.atlas() function
 #assign brain coordinates for all sections in this brain.
@@ -50,13 +49,12 @@ plot(coord[0:155])
 #brain_seg <- segment(images[45], channel=0)
 #brain_seg$filter$resize<-0.08
 ##brain_seg$filter$brain.threshold <- 112
-if(!dir.exists(file.path(wd, "saved_filters"))){dir.create(file.path(wd, "saved_filters"), showWarnings = FALSE)}
+#if(!dir.exists(file.path(wd, "saved_filters"))){dir.create(file.path(wd, "saved_filters"), showWarnings = FALSE)}
 #save(neuron_seg, brain_seg, file=paste0(wd, "/saved_filters/initial_filters.RData"))
 
 #use old filters
-load(file= "..//saved_filter/initial_filters_qiang.RData")
+load(file= "../saved_filter/initial_filters_qiang.RData")
 brain_seg$filter$resize<-0.08
-#or 12499
 brain_seg$filter$Max<-35000
 
 
@@ -64,11 +62,11 @@ brain_seg$filter$Max<-35000
 
 # Where did you leave off?
 
-load_index <- 72
+load_index <- 112
 next_index <- load_index+1
 
 #datasets <- NULL
-load(paste0(wd, '/datasets/up_to_image_', load_index, '_accumulated_dataset.RData'))
+load(file=paste0(wd, '/datasets/', tools::file_path_sans_ext(basename(images[load_index])), 'accum_dataset.RData'))
 
 nrow(table(datasets$image))
 
@@ -79,11 +77,8 @@ i
 
 #begin with image 37
 #coord[42] <- coord[41] #bregma 2.705 atlas was busted
-for(i in 124:length(images)){
-  #xpos = 200, ypos = -50, width = 35, height = 15
-    #x11()
+for(i in 113:length(images)){
     seg<-segment(images[i], display=FALSE, filter = neuron_seg$filter, channel=2)
-    
     
     input.points=""
     regi<-registration(images[i], coordinate=coord[i], filter = brain_seg$filter, display=TRUE, channel=0, batch.mode = TRUE)
@@ -96,7 +91,7 @@ for(i in 124:length(images)){
     
     if(!dir.exists(file.path(wd, "/registrations/"))){dir.create(file.path(wd, "/registrations/"), showWarnings = FALSE)}
     dataset<-inspect.registration(regi, seg, soma = TRUE, forward.warps = TRUE, batch.mode = TRUE)
-    dev.copy(pdf, paste0(wd, '/registrations/',tools::file_path_sans_ext(basename(images[i])), '.pdf'), width=18, height=8)
+    dev.copy(pdf, paste0(wd, '/registrations/',tools::file_path_sans_ext(basename(images[i])), '_registrations', '.pdf'), width=18, height=8)
     dev.off()
     
     #for the first case, initialize datasets
@@ -105,21 +100,21 @@ for(i in 124:length(images)){
     
     #create directory, save progress
     if(!dir.exists(file.path(wd, "/session_data/"))){dir.create(file.path(wd, "/session_data/"), showWarnings = FALSE)}
-    save(file=paste0(wd, '/session_data/', tools::file_path_sans_ext(basename(images[i])), '.RData'), seg, regi, dataset)
+    save(file=paste0(wd, '/session_data/', tools::file_path_sans_ext(basename(images[i])),'_session_data', '.RData'), seg, regi, dataset)
     
     #create directory, save the registration filter
     if(!dir.exists(file.path(wd, "/specific_reg/"))){dir.create(file.path(wd, "/specific_reg/"), showWarnings = FALSE)}
-    save(file=paste0(wd, '/specific_reg/image_', i, '_registration_info.RData'), regi)
+    save(file=paste0(wd, '/specific_reg/', tools::file_path_sans_ext(basename(images[i])), '_registration_info.RData'), regi)
     
     #create directory, save the datasets df
     if(!dir.exists(file.path(wd, "/datasets/"))){dir.create(file.path(wd, "/datasets/"), showWarnings = FALSE)}
-    save(file=paste0(wd, '/datasets/up_to_image_', i, '_accumulated_dataset.RData'), datasets)
+    save(file=paste0(wd, '/datasets/', tools::file_path_sans_ext(basename(images[i])), '_accum_dataset.RData'), datasets)
     dev.off()
 }
 
 
 #remove neurons from datasets
-datasets<-datasets[!(datasets$image %in% tools::file_path_sans_ext(basename(images[79:86]))), ]
+datasets<-datasets[!(datasets$image %in% tools::file_path_sans_ext(basename(images[111]))), ]
 
 #---
 #---

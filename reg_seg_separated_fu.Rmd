@@ -1,0 +1,181 @@
+---
+title: "FU stimulated Brain | wholebrain"
+subtitle: "Yu Lab | Stowers Institute for Medical Research"
+author: "Kohl Kinning"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  html_notebook:
+    theme: cosmo
+    toc: yes
+    toc_float:
+      collapsed: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+For this document to be useful, you must adjust your RStudio settings. Uncheck *Show Previews Inline* so that the interactive pot will show in the view pane. Check *Show Output in Console*.
+
+We'll first preform the registration on the sections. Previously we registered the sections to the atlas and called neruons in the same iteration. In an attempt to gain flexibility and remove risk of duplicating counts of neruons, we'll call neruons after determining the correct registrations per sections.
+
+## Initialization
+
+```{r}
+wd <- "D:/qiq/2019-01-07_MO_PEA_IAMM_MIX/Flipped/testing/"
+setwd(wd)
+library(wholebrain)
+library(dplyr)
+library(naturalsort)
+library(stringr)
+```
+
+## Image prep
+
+```{r}
+# get listing
+images <- get.images(paste0(wd, "/images"))
+```
+
+```{r}
+#set spacing between periods in millimeters
+smp<-0.06
+```
+
+Next pick several images far apart from each other and manually inspect them for what coordinate they are at by comparing to [Allen atlas](http:/mouse.brain-map.org/experiment/siv/?imageId=102162070) begin when the frontal cortex comes in to view.
+
+```{r}
+inspected <- c(47, 66, 84, 101, 133)
+```
+
+Visualize the sections with the image viewer.
+
+```{r}
+for(i in 1:length(inspected)){imshow(images[inspected[i]])}
+```
+
+Assign bregma cordiantes for each image in `r inspected`
+
+```{r}
+smp.coord<-c(3.145, 1.345, 0.145, -0.955, -2.98)
+```
+
+
+Construct the vector of coordinates, with a coordiante corresponding with each section in `r images` vector
+
+```{r}
+coord <- map.to.atlas(image.number=inspected, 
+                      coordinate=smp.coord, 
+                      sampling.period=smp, 
+                      number.of.sections=length(images)
+)
+```
+
+
+## Useful info
+
+Use this if there is a lingering plot in the Viewer pane.
+
+```{r}
+dev.off()
+```
+
+How many images are currently in the datasets df?
+
+```{r}
+nrow(table(datasets$image))
+```
+
+
+## Registration
+
+Load Qiang's filters, we'll use the same segmentation filters for all of the brains that we'll be comparing. This .RData file actually has the brain filter and the neuron filter. 
+
+```{r}
+load(file= "../saved_filter/initial_filters_qiang.RData")
+brain_seg$filter$resize<-0.08
+brain_seg$filter$Max<-25000
+```
+
+
+
+Begin the processing. First wholebrain will attempt auto-registration. You'll see the registration on the right, and the  reference atlas on the left. You'll then see a prompt in the console asking which points you would like to remove. Remove any points that are inorrect. After pressing Enter, you can add your own registation points. The fewer the better--the software does a good job connecting the dots. I'll usually add 8+/-2, mainly for the internal feature scaling and alignment.
+
+You have to specify the indexes for the images youo wish to register. For this example, I'll use images 47 through 138.
+
+```{r}
+for(i in 47:138){
+  input.points=""
+  regi<-registration(images[i], coordinate=coord[i], filter = brain_seg$filter, display=TRUE, channel=0, batch.mode = TRUE)
+  input.points<-readline(prompt="Input a vector of points to remove, enter if OK: ")
+  if(!(input.points == "")){regi<-remove.corrpoints(regi, eval(parse(text=input.points)))}
+  regi<-add.corrpoints(regi)
+  #re-register with added/removed points
+  regi<-registration(images[i], coordinate=coord[i], filter = brain_seg$filter, display=TRUE, channel=0, correspondance=regi)
+  dev.off()
+
+  #create directory, save the registration info
+  if(!dir.exists(file.path(wd, "/specific_reg/"))){dir.create(file.path(wd, "/specific_reg/"), showWarnings = FALSE)}
+  save(file=paste0(wd, '/specific_reg/', tools::file_path_sans_ext(basename(images[i])), '_registration_info.RData'), regi)
+}
+```
+
+
+Now we've got a pile out folders named `output***` in the working directory and registration information for each section. Using these files, we'll assign neruons to regions (informed by the atlas) and quantify.
+
+## Segmentation
+
+The hard part is over with. Now we load all of the individual registrations, call the neurons and the regions in which they reside, and accumulate this all in to one tidy dataframe.
+
+```{r}
+dev.off()
+```
+
+Get a list of the registration files, extract the index number from the file name.
+
+```{r}
+file_list <- naturalsort(list.files(paste0(wd, "specific_reg"), full.names = TRUE))
+
+df_list <- lapply(file_list, function(x) mget(load(x)))
+str(registration)
+
+suffixes <- NULL
+for(registration in file_list){
+  load(registration)
+  suffix <- as.numeric(as.character(str_match(registration, "([0-9]{3})_")[2]))
+  assign(paste0("regi_", suffix), regi)
+  suffixes <- c(suffixes, as.numeric(suffix))
+}
+```
+
+
+Use the set of image indexes to segment each section.
+
+```{r}
+for(suffix in suffixes){
+  seg<-segment(images[suffix], display=FALSE, filter = neuron_seg$filter, channel=2)
+  # no need to compute forward warps again, ignore warning
+  # loads image in output* folders, need to be in working directory
+  output <- inspect.registration(get(paste0("regi_", suffix)), seg, soma = TRUE, forward.warps = FALSE, device=FALSE, batch.mode = TRUE)
+  assign(paste0("dataset_", suffix), output)
+  
+}
+```
+
+
+
+
+
+## Visualization
+
+### glassbrain()
+
+3d brain with neurons plotted.
+
+```{r}
+glassbrain(datasets)
+```
+
+Same as above, but with only the regions containing the word olfactory.
+
+```{r}
+glassbrain(datasets[grep("Olfactory|olfactory", datasets$name),])
+```

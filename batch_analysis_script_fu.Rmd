@@ -1,0 +1,193 @@
+---
+title: "FU stimulated Brain | wholebrain"
+subtitle: "Yu Lab | Stowers Institute for Medical Research"
+author: "Kohl Kinning"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  html_notebook:
+    theme: cosmo
+    toc: yes
+    toc_float:
+      collapsed: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+For this document to be useful, you must adjust your RStudio settings. Uncheck *Show Previews Inline* so that the interactive pot will show in the view pane. Check *Show Output in Console*.
+
+## Initialization
+
+```{r}
+wd <- "D:/qiq/2019-01-07_MO_PEA_IAMM_MIX/Flipped/FU"
+setwd(wd)
+library(wholebrain)
+```
+
+## Image prep
+
+```{r}
+# get listing
+images <- get.images(paste0(wd, "/images"))
+```
+
+```{r}
+#set spacing between periods in millimeters
+smp<-0.06
+```
+
+Next pick several images far apart from each other and manually inspect them for what coordinate they are at by comparing to [Allen atlas](http:/mouse.brain-map.org/experiment/siv/?imageId=102162070) begin when the frontal cortex comes in to view.
+
+```{r}
+inspected <- c(47, 66, 84, 101, 133)
+
+for(i in 1:length(inspected)){imshow(images[inspected[i]])}
+```
+
+## Useful info
+
+Use this if there is a lingering plot in the Viewer pane, i.e. if 
+
+```{r}
+dev.off()
+```
+
+How many images are currently in the datasets df?
+
+```{r}
+nrow(table(datasets$image))
+```
+
+
+## Image processing
+
+Load Qiang's filters, we'll use the same segmentation filters for all of the brains that we'll be comparing.
+
+```{r}
+load(file= "../saved_filter/initial_filters_qiang.RData")
+brain_seg$filter$resize<-0.08
+brain_seg$filter$Max<-35000
+```
+
+Load all of you previously gathered data! The load index will be the index of the most recently completed image.
+
+```{r}
+# index of most recently completed image
+load_index <- 127
+# index of the image to be processed
+next_index <- load_index+1
+#next_index <- 131
+
+#datasets <- NULL
+load(file=paste0(wd, '/datasets/', tools::file_path_sans_ext(basename(images[load_index])), 'accum_dataset.RData'))
+```
+
+Begin the processing. First wholebrain will attempt auto-registration. You'll see the registration on the right, and the  reference atals on the left. You'll then see a prompt in the console asking which points you would like to remove. Remove any points that are inorrect. After pressing Enter, you can add your own registation points. The fewer the better--the software does a good job connecting the dots. I'll usually add 6+/-2, mainly for the internal feature scaling and alignment.
+
+```{r}
+for(i in next_index:length(images)){
+    seg<-segment(images[i], display=FALSE, filter = neuron_seg$filter, channel=2)
+    
+    input.points=""
+    regi<-registration(images[i], coordinate=coord[i], filter = brain_seg$filter, display=TRUE, channel=0, batch.mode = TRUE)
+    input.points<-readline(prompt="Input a vector of points to remove, enter if OK: ")
+    if(!(input.points == "")){regi<-remove.corrpoints(regi, eval(parse(text=input.points)))}
+    regi<-add.corrpoints(regi)
+    #re-register with added/removed points
+    regi<-registration(images[i], coordinate=coord[i], filter = brain_seg$filter, display=TRUE, channel=0, correspondance=regi)
+    dev.off()
+    
+    if(!dir.exists(file.path(wd, "/registrations/"))){dir.create(file.path(wd, "/registrations/"), showWarnings = FALSE)}
+    dataset<-inspect.registration(regi, seg, soma = TRUE, forward.warps = TRUE, batch.mode = TRUE)
+    dev.copy(pdf, paste0(wd, '/registrations/',tools::file_path_sans_ext(basename(images[i])), 'registrations', '.pdf'), width=18, height=8)
+    dev.off()
+    
+    #for the first case, initialize datasets
+    if(!exists("datasets")){datasets <- dataset}
+    datasets<-rbind(datasets, dataset)
+    
+    #create directory, save progress
+    if(!dir.exists(file.path(wd, "/session_data/"))){dir.create(file.path(wd, "/session_data/"), showWarnings = FALSE)}
+    save(file=paste0(wd, '/session_data/', tools::file_path_sans_ext(basename(images[i])),'session_data', '.RData'), seg, regi, dataset)
+    
+    #create directory, save the registration filter
+    if(!dir.exists(file.path(wd, "/specific_reg/"))){dir.create(file.path(wd, "/specific_reg/"), showWarnings = FALSE)}
+    save(file=paste0(wd, '/specific_reg/', tools::file_path_sans_ext(basename(images[i])), '_registration_info.RData'), regi)
+    
+    #create directory, save the datasets df
+    if(!dir.exists(file.path(wd, "/datasets/"))){dir.create(file.path(wd, "/datasets/"), showWarnings = FALSE)}
+    save(file=paste0(wd, '/datasets/', tools::file_path_sans_ext(basename(images[i])), 'accum_dataset.RData'), datasets)
+    dev.off()
+}
+```
+
+Save the final object once you are done.
+
+```{r}
+save(file=paste0(wd, "/datasets/datasets_accum.Robj"), datasets)
+```
+
+
+## Remove neurons
+
+Remove the nerons called for a specific image. Useful if you need to re-process an image due poor registration, and didn't catch that it was an issue before the neurons were saved in to the dataset.
+
+```{r}
+# index of image that the neurons were called from
+datasets<-datasets[!(datasets$image %in% tools::file_path_sans_ext(basename(images[131]))), ]
+```
+
+
+## Visualization
+
+### glassbrain()
+
+3d brain with neurons plotted.
+
+```{r}
+glassbrain(datasets)
+```
+
+Same as above, but with only the regions containing the word olfactory.
+
+```{r}
+glassbrain(datasets[grep("Olfactory|olfactory", datasets$name),])
+```
+
+### dot.plot()
+
+```{r}
+dot.plot(datasets)
+```
+
+
+## Errata
+
+If you've been a bit sloppy and have partial datasets due to not loading your progress before starting, the code below will accumulate all of the neurons and exclude duplicates. It goes through each saved dataset and adds any new rows (based on the image name) it won't overwrite, so it takes the datasets backwards!
+
+```{r}
+#load in all of the partial datasets, rename the object once loaded
+i=1
+suffices <- sprintf("%0.3d", 1:length(file_list))
+for(item in file_list){
+  load(item);
+  assign(paste0("datasets_", suffices[i]), datasets);
+  i<-i+1;
+}
+
+j=1
+#loop through all of the loaded dataset dataframes
+for(dataset in mget(sort(grep("^datasets_[0-9]+", ls(), value=TRUE), decreasing=TRUE))){
+  #initialize datasets_accum dataframe
+  if(j==1){datasets_accum <- dataset;j<-1;};
+  #merge the datasets verticaly, subset non-accum df to prevent duplicates
+  datasets_accum <- rbind(datasets_accum, dataset[!(dataset$image %in% datasets_accum$image),]);
+  j<-j+1;
+}
+
+paste0(j, " datasets were merged.")
+save(file=paste0(wd, "/datasets/datasets_accum.Robj"), datasets)
+```
+
+
+
+

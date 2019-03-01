@@ -158,14 +158,14 @@ for(dataset in mget(sort(grep("^datasets_[0-9]+", ls(), value=TRUE), decreasing=
 paste0(j, " datasets were merged.")
 save(file=paste0(wd, "/datasets/datasets_accum.Robj"), datasets)
 
-
-
+load(file=paste0(wd, "/datasets/pea_iamm_datasets_accum.Robj"))
 
 # Everything down here is for visualization and data summary. The datasets object should have all of the segmentation information.
 
 datasets_accum <- datasets
 
-datasets_accum$animal <- "PEA_and_IAMM"
+datasets_accum$animal <- "PEA+IAMM"
+save(file=paste0(wd, "/datasets/pea_iamm_datasets_accum.Robj"), datasets_accum)
 
 #remove the first few sections, code issues in wholebrain
 #datasets_right$right.hemisphere<-TRUE
