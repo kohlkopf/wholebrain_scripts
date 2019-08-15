@@ -10,7 +10,7 @@ output:
     toc_float:
       collapsed: yes
 editor_options: 
-  chunk_output_type: console
+  chunk_output_type: inline
 ---
 
 For this document to be useful, you must adjust your RStudio editor settings by changing options in the mneu that comes up from clicking on the gear icon. Uncheck *Show Previews Inline* so that the interactive pot will show in the view pane. Check *Show Output in Console*.
@@ -20,7 +20,7 @@ We'll first preform the registration on the sections. Previously we registered t
 ## Initialization
 
 ```{r}
-wd <- "D:/2019-05-26_PEA_IAMM_MIX_Trap2_cFos/IAMM_MIX/"
+wd <- "D:/2019-05-26_PEA_IAMM_MIX_Trap2_cFos/IAMM_IAMM"
 setwd(wd)
 library(wholebrain)
 library(dplyr)
@@ -132,7 +132,7 @@ dev.off()
 Get a list of the registration files, extract the index number from the file name.
 
 ```{r}
-file_list <- naturalsort(list.files(paste0(wd, "specific_reg"), full.names = TRUE))
+file_list <- naturalsort(list.files(paste0(wd, "/specific_reg"), full.names = TRUE))
 
 df_list <- lapply(file_list, function(x) mget(load(x)))
 str(registration)
@@ -140,28 +140,28 @@ str(registration)
 suffixes <- NULL
 for(registration in file_list){
   load(registration)
-  suffix <- as.numeric(as.character(str_match(registration, "([0-9]{3})_")[2]))
+  suffix <- as.numeric(as.character(str_match(registration, "image_(.+)_registration")[2]))
   assign(paste0("regi_", suffix), regi)
   suffixes <- c(suffixes, as.numeric(suffix))
 }
 ```
 
 
-Channel 1 segmentation
+Channel 1 segmentation, moved files so it wont work? Retain the file structure of Qiang
 
 ```{r}
+suffix=12
 for(suffix in suffixes){
   seg <- segment(images[suffix], display=FALSE, filter=neuron_seg$filter, channel=1)
-  # no need to compute forward warps again, ignore warning
   # loads image in output* folders, need to be in working directory
-  output <- inspect.registration(get(paste0("regi_", suffix)), seg, soma=TRUE, forward.warps=FALSE, device=FALSE, batch.mode=TRUE)
+  output <- inspect.registration(get(paste0("regi_", suffix)), seg, soma=TRUE, forward.warps=TRUE, device=FALSE, batch.mode=TRUE)
   assign(paste0("dataset_ch1_", suffix), output)
   
 }
 
 bound_dataset_ch1 <- bind_rows(mget(paste0("dataset_ch1_", suffixes)), .id = "column_label")
-bound_dataset_ch1$animal <- "IAMM_MIXED"
-bound_dataset_ch1$channel <- 1
+bound_dataset_ch1$animal <- "IAMM_IAMM"
+bound_dataset_ch1$channel <- "cfos"
 length(table(bound_dataset_ch1$image))
 ```
 
@@ -172,13 +172,13 @@ for(suffix in suffixes){
   seg <- segment(images[suffix], display=FALSE, filter=neuron_seg$filter, channel=2)
   # no need to compute forward warps again, ignore warning
   # loads image in output* folders, need to be in working directory
-  output <- inspect.registration(get(paste0("regi_", suffix)), seg, soma=TRUE, forward.warps=FALSE, device=FALSE, batch.mode=TRUE)
+  output <- inspect.registration(get(paste0("regi_", suffix)), seg, soma=TRUE, forward.warps=TRUE, device=FALSE, batch.mode=TRUE)
   assign(paste0("dataset_ch2_", suffix), output)
 }
 
 bound_dataset_ch2 <- bind_rows(mget(paste0("dataset_ch2_", suffixes)), .id = "column_label")
-bound_dataset_ch2$animal <- "IAMM_MIXED"
-bound_dataset_ch2$channel <- 2
+bound_dataset_ch2$animal <- "IAMM_IAMM"
+bound_dataset_ch2$channel <- "trap2"
 length(table(bound_dataset_ch2$image))
 ```
 
@@ -193,7 +193,8 @@ Save final table
 
 ```{r}
 if(!dir.exists(file.path(wd, "dataset_post_registration/"))){dir.create(file.path(wd, "dataset_post_registration/"), showWarnings = FALSE)}
-write.table(file = file.path(wd, "dataset_post_registration/three_channel_dataset.csv"), datasets, sep = ",")
+write.table(file=file.path(wd, "dataset_post_registration/three_channel_dataset.csv"), datasets, sep=",")
+datasets <- read.table(file=file.path(wd, "dataset_post_registration/three_channel_dataset.csv"), sep=",")
 ```
 
 ## Overlapping neurons
@@ -232,18 +233,18 @@ datasets <- datasets %>% mutate(radius=sqrt(area/pi))
 
 datasets %>% group_by(channel) %>% summarize(n())
 
-overlap_check <- function(x1, y1, x2, y2, r2, print=TRUE) {return((x1-x2)^2 + (y1-y2)^2 < r2^2)}
+overlap_check <- function(x1, y1, x2, y2, r2, print=TRUE) {return(((x1-x2)^2 + (y1-y2)^2) <= r2^2)}
 
 cum_overlap <- vector()
 for(ap in unique(datasets$AP)){
   overlap_ch1 <- vector()
-  for(coord in 1:length((datasets %>% filter(channel==1 & AP==ap))$x)){
+  for(coord in 1:length((datasets %>% filter(channel=="trap2" & AP==ap))$x)){
     overlap_ch1 <- c(overlap_ch1, 
-                     sum(overlap_check((datasets %>% filter(channel==1 & AP==ap))$x[coord], 
-                                       (datasets %>% filter(channel==1 & AP==ap))$y[coord], 
-                                       (datasets %>% filter(channel==2 & AP==ap))$x, 
-                                       (datasets %>% filter(channel==2 & AP==ap))$y, 
-                                       (datasets %>% filter(channel==2 & AP==ap))$radius)
+                     sum(overlap_check((datasets %>% filter(channel=="trap2" & AP==ap))$x[coord], 
+                                       (datasets %>% filter(channel=="trap2" & AP==ap))$y[coord], 
+                                       (datasets %>% filter(channel=="cfos" & AP==ap))$x, 
+                                       (datasets %>% filter(channel=="cfos" & AP==ap))$y, 
+                                       (datasets %>% filter(channel=="cfos" & AP==ap))$radius)
                          )
                      )
   }
@@ -255,12 +256,12 @@ max(cum_overlap)
 
 #do we have readout for every neuron in channel 1?
 length(cum_overlap)
-nrow(datasets %>% filter(channel==1))
+nrow(datasets %>% filter(channel=="trap2"))
 
 #of channel one, how many are overlapping in each section?
-cbind(datasets %>% filter(channel==1), cum_overlap) %>% group_by(AP) %>% summarize(sum(cum_overlap))
+cbind(datasets %>% filter(channel=="trap2"), cum_overlap) %>% group_by(AP) %>% summarize(sum(cum_overlap))
 #how many by region?
-cbind(datasets %>% filter(channel==1), cum_overlap) %>% group_by(name) %>% summarize(sum(cum_overlap), sum(cum_overlap)/n())
+cbind(datasets %>% filter(channel=="trap2"), cum_overlap) %>% group_by(name) %>% summarize(sum(cum_overlap), n(), 100*(sum(cum_overlap)/n())) %>% filter(grepl("Olfactory|olfactory", name))
 ```
 
 Detritis
@@ -329,4 +330,25 @@ Same as above, but with only the regions containing the word olfactory.
 
 ```{r}
 glassbrain(datasets[grep("Olfactory|olfactory", datasets$name),])
+```
+
+```{r}
+trap2_overlap <- cbind(datasets %>% filter(channel=="trap2"), cum_overlap) %>% filter(cum_overlap==1)
+glassbrain(trap2_overlap[grep("Olfactory|olfactory", trap2_overlap$name),], cex=2, high.res=TRUE)
+```
+
+
+```{r}
+glassbrain(cbind(datasets %>% filter(channel=="trap2"), cum_overlap) %>% filter(cum_overlap==1), cex=2)
+```
+
+```{r}
+glassbrain(datasets %>% filter(channel=="cfos"), cex=2)
+```
+
+```{r}
+schematic.plot(datasets %>% filter(channel=="cfos"),device=FALSE)
+```
+```{r}
+schematic.plot(cbind(datasets %>% filter(channel=="trap2"), cum_overlap) %>% filter(cum_overlap==1),device=FALSE)
 ```

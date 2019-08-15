@@ -10,7 +10,7 @@ output:
     toc_float:
       collapsed: yes
 editor_options: 
-  chunk_output_type: console
+  chunk_output_type: inline
 ---
 
 For this document to be useful, you must adjust your RStudio editor settings by changing options in the mneu that comes up from clicking on the gear icon. Uncheck *Show Previews Inline* so that the interactive pot will show in the view pane. Check *Show Output in Console*.
@@ -20,7 +20,7 @@ We'll first preform the registration on the sections. Previously we registered t
 ## Initialization
 
 ```{r}
-wd <- "D:/2019-05-26_PEA_IAMM_MIX_Trap2_cFos/IAMM_MIX/"
+wd <- "D:/2019-05-26_PEA_IAMM_MIX_Trap2_cFos/PEA_MIX/PEA_MIX"
 setwd(wd)
 library(wholebrain)
 library(dplyr)
@@ -45,20 +45,20 @@ smp <- 0.06
 Next pick several images far apart from each other and manually inspect them for what coordinate they are at by comparing to [Allen atlas](http:/mouse.brain-map.org/experiment/siv/?imageId=102162070) begin when the frontal cortex comes in to view.
 
 ```{r}
-inspected <- c(1,10,20,36,50,60,81)
+inspected <- c(1,12,33,51,60,81)
 ```
 
 Visualize the sections with the image viewer.
 
 ```{r}
-imshow(images[50])
+imshow(images[51])
 for(i in 1:length(inspected)){imshow(images[inspected[i]])}
 ```
 
-Assign bregma coordinates for each image in `r inspected`
+Assign bregma coordinates for each image in `r inspected`. SHould be -0.955
 
 ```{r}
-smp.coord <- c(2.445, 1.845, 1.245, 0.020, -0.955, -1.355, -2.78)
+smp.coord <- c(2.445, 1.42, 0.020, -0.985, -1.555, -3.18)
 ```
 
 
@@ -72,7 +72,8 @@ coord <- map.to.atlas(image.number=inspected,
 )
 
 #plot the coords to ensure nothing is way off
-plot(coord[0:90])
+dev.off()
+plot(coord[0:96])
 ```
 
 Use this if there is a lingering plot in the Viewer pane.
@@ -88,8 +89,8 @@ Load Qiang's filters, we'll use the same segmentation filters for all of the bra
 
 ```{r}
 load(file= "U:/qiq/2019-05-26_PEA_IAMM_MIX_Trap2_cFos/Processed/IAMM_IAMM/saved_filters/saved_filters/initial_filters.RData")
-brain_seg$filter$resize<-0.1
-brain_seg$filter$Max<-15000
+brain_seg$filter$resize<-0.08
+brain_seg$filter$Max<-18000
 
 ```
 
@@ -97,12 +98,12 @@ brain_seg$filter$Max<-15000
 
 Begin the processing. First wholebrain will attempt auto-registration. You'll see the registration on the right, and the  reference atlas on the left. You'll then see a prompt in the console asking which points you would like to remove. Remove any points that are incorrect. After pressing Enter, you can add your own registration points. The fewer the better--the software does a good job connecting the dots. I'll usually add 8+/-2, mainly for the internal feature scaling and alignment.
 
-You have to specify the indexes for the images you wish to register. For this example, I'll use images 31 through 137.
+You have to specify the indexes for the images you wish to register.
 
 ```{r}
 dev.off()
 
-for(i in 86:90){
+for(i in c(94)){
   input.points=""
   regi <- registration(images[i], coordinate=coord[i], filter = brain_seg$filter, display=TRUE, channel=0, batch.mode = TRUE)
   input.points<-readline(prompt="Input a vector of points to remove, enter if OK: ")
@@ -132,7 +133,7 @@ dev.off()
 Get a list of the registration files, extract the index number from the file name.
 
 ```{r}
-file_list <- naturalsort(list.files(paste0(wd, "specific_reg"), full.names = TRUE))
+file_list <- naturalsort(list.files(paste0(wd, "/specific_reg"), full.names = TRUE))
 
 df_list <- lapply(file_list, function(x) mget(load(x)))
 str(registration)
@@ -146,39 +147,46 @@ for(registration in file_list){
 }
 ```
 
+```{r}
+image <- images[25]
+neuron_seg_ch_1 <- segment(input=image, channel=1)
+```
 
 Channel 1 segmentation
 
 ```{r}
 for(suffix in suffixes){
-  seg <- segment(images[suffix], display=FALSE, filter=neuron_seg$filter, channel=1)
-  # no need to compute forward warps again, ignore warning
+  seg <- segment(images[suffix], display=FALSE, filter=neuron_seg_ch_1$filter, channel=1)
   # loads image in output* folders, need to be in working directory
-  output <- inspect.registration(get(paste0("regi_", suffix)), seg, soma=TRUE, forward.warps=FALSE, device=FALSE, batch.mode=TRUE)
+  output <- inspect.registration(get(paste0("regi_", suffix)), seg, soma=TRUE, forward.warps=TRUE, device=FALSE, batch.mode=TRUE)
   assign(paste0("dataset_ch1_", suffix), output)
   
 }
 
 bound_dataset_ch1 <- bind_rows(mget(paste0("dataset_ch1_", suffixes)), .id = "column_label")
 bound_dataset_ch1$animal <- "IAMM_MIXED"
-bound_dataset_ch1$channel <- 1
+bound_dataset_ch1$channel <- "trap2"
 length(table(bound_dataset_ch1$image))
 ```
 
 Channel 2 segmentation
 
 ```{r}
+image <- images[25]
+neuron_seg_ch_2 <- segment(input=image, channel=2)
+```
+
+```{r}
 for(suffix in suffixes){
-  seg <- segment(images[suffix], display=FALSE, filter=neuron_seg$filter, channel=2)
-  # no need to compute forward warps again, ignore warning
+  seg <- segment(images[suffix], display=FALSE, filter=neuron_seg_ch_2$filter, channel=2)
   # loads image in output* folders, need to be in working directory
-  output <- inspect.registration(get(paste0("regi_", suffix)), seg, soma=TRUE, forward.warps=FALSE, device=FALSE, batch.mode=TRUE)
-  assign(paste0("dataset_ch2_", suffix), output)
+  output <- inspect.registration(get(paste0("regi_", suffix)), seg, soma=TRUE, forward.warps=TRUE, device=FALSE, batch.mode=TRUE)
+  assign(paste0("dataset_ch2_", suffix),  output)
 }
 
 bound_dataset_ch2 <- bind_rows(mget(paste0("dataset_ch2_", suffixes)), .id = "column_label")
 bound_dataset_ch2$animal <- "IAMM_MIXED"
-bound_dataset_ch2$channel <- 2
+bound_dataset_ch2$channel <- "cfos"
 length(table(bound_dataset_ch2$image))
 ```
 
@@ -194,6 +202,7 @@ Save final table
 ```{r}
 if(!dir.exists(file.path(wd, "dataset_post_registration/"))){dir.create(file.path(wd, "dataset_post_registration/"), showWarnings = FALSE)}
 write.table(file = file.path(wd, "dataset_post_registration/three_channel_dataset.csv"), datasets, sep = ",")
+datasets <- read.table(file=file.path(wd, "dataset_post_registration/three_channel_dataset.csv"), sep=",")
 ```
 
 ## Overlapping neurons
@@ -237,13 +246,13 @@ overlap_check <- function(x1, y1, x2, y2, r2, print=TRUE) {return((x1-x2)^2 + (y
 cum_overlap <- vector()
 for(ap in unique(datasets$AP)){
   overlap_ch1 <- vector()
-  for(coord in 1:length((datasets %>% filter(channel==1 & AP==ap))$x)){
+  for(coord in 1:length((datasets %>% filter(channel=="trap2" & AP==ap))$x)){
     overlap_ch1 <- c(overlap_ch1, 
-                     sum(overlap_check((datasets %>% filter(channel==1 & AP==ap))$x[coord], 
-                                       (datasets %>% filter(channel==1 & AP==ap))$y[coord], 
-                                       (datasets %>% filter(channel==2 & AP==ap))$x, 
-                                       (datasets %>% filter(channel==2 & AP==ap))$y, 
-                                       (datasets %>% filter(channel==2 & AP==ap))$radius)
+                     sum(overlap_check((datasets %>% filter(channel=="trap2" & AP==ap))$x[coord], 
+                                       (datasets %>% filter(channel=="trap2" & AP==ap))$y[coord], 
+                                       (datasets %>% filter(channel=="cfos" & AP==ap))$x, 
+                                       (datasets %>% filter(channel=="cfos" & AP==ap))$y, 
+                                       (datasets %>% filter(channel=="cfos" & AP==ap))$radius)
                          )
                      )
   }
@@ -251,57 +260,16 @@ for(ap in unique(datasets$AP)){
 }
 
 #should only overlap one, overlap in signal implies same neuron labelled
-max(cum_overlap)
+summary(cum_overlap)
 
 #do we have readout for every neuron in channel 1?
 length(cum_overlap)
-nrow(datasets %>% filter(channel==1))
+nrow(datasets %>% filter(channel=="trap2"))
 
 #of channel one, how many are overlapping in each section?
-cbind(datasets %>% filter(channel==1), cum_overlap) %>% group_by(AP) %>% summarize(sum(cum_overlap))
+cbind(datasets %>% filter(channel=="trap2"), cum_overlap) %>% group_by(AP) %>% summarize(sum(cum_overlap))
 #how many by region?
-cbind(datasets %>% filter(channel==1), cum_overlap) %>% group_by(name) %>% summarize(sum(cum_overlap), sum(cum_overlap)/n())
-```
-
-Detritis
-```{r}
-datasets <- datasets %>% mutate(radius=sqrt(area/pi))
-
-datasets %>% group_by(channel) %>% summarize(n())
-
-datasets$radius
-
-ch_1 <- ((datasets %>% filter(channel==1 & AP==2.505))[,c("x","y","radius")])
-ch_2 <- (datasets %>% filter(channel==2 & AP==2.505))[,c("x","y","radius")]
-#ch_2 <- sample(ch_2, size=length(((datasets %>% filter(channel==1 & AP==2.505))[,c("x","y","radius")])))
-
-overlap_check <- function(x1, y1, x2, y2, r2, print=TRUE) {return((x1-x2)^2 + (y1-y2)^2 < r2^2)}
-
-x1 <- (datasets %>% filter(channel==1 & AP==2.505))$x
-y1 <- (datasets %>% filter(channel==1 & AP==2.505))$y
-
-x2 <- (datasets %>% filter(channel==2 & AP==2.505))$x
-y2 <- (datasets %>% filter(channel==2 & AP==2.505))$y
-#for each ch1 neuron, is there a ch2 neuron which it overlaps with?
-#ch_2 is a df
-#will return length of ch_1 neurons passed in, >0 means that neuron overlaps
-overlap_ch1 <- vector()
-for(coord in 1:length(x1)) {
-  overlap_ch1 <- c(overlap_ch1, sum(overlap_check(x1[coord], y1[coord], ch_2$x, ch_2$y, ch_2$radius)))
-}
-length(x1)
-nrow(ch_2)
-length(overlap_ch1)
-sum(overlap_ch1)
-
-#for each ch2 neuron, is there a ch2 neuron which it overlaps with? should be similar to previous
-overlap_ch2 <- vector()
-for(coord in 1:length(x2)) {
-  overlap_ch2 <- c(overlap_ch2, sum(overlap_check(x2[coord], y2[coord], ch_1$x, ch_1$y, ch_1$radius)))
-}
-sum(overlap_ch2)
-
-
+cbind(datasets %>% filter(channel=="trap2"), cum_overlap) %>% group_by(name) %>% summarize(sum(cum_overlap), n(), 100*(sum(cum_overlap)/n())) %>% filter(grepl("Olfactory|olfactory", name))
 ```
 
 ## Visualization
