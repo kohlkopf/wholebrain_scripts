@@ -199,34 +199,7 @@ datasets <- read.table(file=file.path(wd, "dataset_post_registration/three_chann
 
 ## Overlapping neurons
 
-
-```{r}
-datasets <- datasets %>% mutate(radius=sqrt(area/pi))
-
-#depends on channel 1 coming first! does observe groups?
-#check within level--dochannel 1 neurons overlap? do this by lagging the n(channel 2) within group (AP), can do reverse? wouldn't know pair
-#enhance overlap_check to return index of match?
-overlap_check <- function(x1, y1, x2, y2, r2, print=TRUE) {return((x1-x2)^2 + (y1-y2)^2 < r2^2)}
-datasets %>% group_by(AP)  %>% mutate(ch_1_sum=sum(channel==1), ch_2_sum=sum(channel==2)) %>% mutate(overlapping=overlap_check(x,y,lead(x, n=first(ch_2_sum)),lead(y, n=first(ch_2_sum)),lead(radius, n=first(ch_2_sum))))
-
-#can't do case_when with a function call on RHS unfortunately
-#mre %>% mutate(within_group_sum=case_when(channel==1 ~ sum(channel==1), channel==2, sum(channel==2)))
-#mre <- rbind(ch_1 %>% slice(rep(1, each = 6)), ch_2 %>% slice(rep(1, each = 7)))%>% mutate(ch_1_sum=sum(channel==1), ch_2_sum=sum(channel==2))
-#mre %>% mutate(overlapping=overlap_check(x,y,lead(x, n=first(ch_2_sum)),lead(y, n=first(ch_2_sum)),lead(radius, n=first(ch_2_sum))))
-#mre %>% mutate(within_group_sum=sum(channel==1))
-
-```
-
-
-```{r}
-overlap_check <- function(x1, y1, x2, y2, r2, print=TRUE) {return((x1-x2)^2 + (y1-y2)^2 < r2^2)}
-
-datasets %>% group_by(AP, channel) %>% mutate(overlapping=sum(overlap_check(x1, y1, ch_2$x, ch_2$y, ch_2$radius)))
-```
-
-
-
-Working!
+Check each trap_2 neuron against all cfos neurons to see if there is overlap. Not reciprocal, only give output for one channel.
 
 ```{r}
 datasets <- datasets %>% mutate(radius=sqrt(area/pi))
@@ -264,46 +237,6 @@ cbind(datasets %>% filter(channel=="trap2"), cum_overlap) %>% group_by(AP) %>% s
 cbind(datasets %>% filter(channel=="trap2"), cum_overlap) %>% group_by(name) %>% summarize(sum(cum_overlap), n(), 100*(sum(cum_overlap)/n())) %>% filter(grepl("Olfactory|olfactory", name))
 ```
 
-Detritis
-```{r}
-datasets <- datasets %>% mutate(radius=sqrt(area/pi))
-
-datasets %>% group_by(channel) %>% summarize(n())
-
-datasets$radius
-
-ch_1 <- ((datasets %>% filter(channel==1 & AP==2.505))[,c("x","y","radius")])
-ch_2 <- (datasets %>% filter(channel==2 & AP==2.505))[,c("x","y","radius")]
-#ch_2 <- sample(ch_2, size=length(((datasets %>% filter(channel==1 & AP==2.505))[,c("x","y","radius")])))
-
-overlap_check <- function(x1, y1, x2, y2, r2, print=TRUE) {return((x1-x2)^2 + (y1-y2)^2 < r2^2)}
-
-x1 <- (datasets %>% filter(channel==1 & AP==2.505))$x
-y1 <- (datasets %>% filter(channel==1 & AP==2.505))$y
-
-x2 <- (datasets %>% filter(channel==2 & AP==2.505))$x
-y2 <- (datasets %>% filter(channel==2 & AP==2.505))$y
-#for each ch1 neuron, is there a ch2 neuron which it overlaps with?
-#ch_2 is a df
-#will return length of ch_1 neurons passed in, >0 means that neuron overlaps
-overlap_ch1 <- vector()
-for(coord in 1:length(x1)) {
-  overlap_ch1 <- c(overlap_ch1, sum(overlap_check(x1[coord], y1[coord], ch_2$x, ch_2$y, ch_2$radius)))
-}
-length(x1)
-nrow(ch_2)
-length(overlap_ch1)
-sum(overlap_ch1)
-
-#for each ch2 neuron, is there a ch2 neuron which it overlaps with? should be similar to previous
-overlap_ch2 <- vector()
-for(coord in 1:length(x2)) {
-  overlap_ch2 <- c(overlap_ch2, sum(overlap_check(x2[coord], y2[coord], ch_1$x, ch_1$y, ch_1$radius)))
-}
-sum(overlap_ch2)
-
-
-```
 
 ## Visualization
 

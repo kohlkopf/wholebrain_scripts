@@ -147,10 +147,6 @@ for(registration in file_list){
 }
 ```
 
-```{r}
-image <- images[25]
-neuron_seg_ch_1 <- segment(input=image, channel=1)
-```
 
 Channel 1 segmentation
 
@@ -169,12 +165,6 @@ bound_dataset_ch1$channel <- "trap2"
 length(table(bound_dataset_ch1$image))
 ```
 
-Channel 2 segmentation
-
-```{r}
-image <- images[25]
-neuron_seg_ch_2 <- segment(input=image, channel=2)
-```
 
 ```{r}
 for(suffix in suffixes){
@@ -207,34 +197,7 @@ datasets <- read.table(file=file.path(wd, "dataset_post_registration/three_chann
 
 ## Overlapping neurons
 
-
-```{r}
-datasets <- datasets %>% mutate(radius=sqrt(area/pi))
-
-#depends on channel 1 coming first! does observe groups?
-#check within level--dochannel 1 neurons overlap? do this by lagging the n(channel 2) within group (AP), can do reverse? wouldn't know pair
-#enhance overlap_check to return index of match?
-overlap_check <- function(x1, y1, x2, y2, r2, print=TRUE) {return((x1-x2)^2 + (y1-y2)^2 < r2^2)}
-datasets %>% group_by(AP)  %>% mutate(ch_1_sum=sum(channel==1), ch_2_sum=sum(channel==2)) %>% mutate(overlapping=overlap_check(x,y,lead(x, n=first(ch_2_sum)),lead(y, n=first(ch_2_sum)),lead(radius, n=first(ch_2_sum))))
-
-#can't do case_when with a function call on RHS unfortunately
-#mre %>% mutate(within_group_sum=case_when(channel==1 ~ sum(channel==1), channel==2, sum(channel==2)))
-#mre <- rbind(ch_1 %>% slice(rep(1, each = 6)), ch_2 %>% slice(rep(1, each = 7)))%>% mutate(ch_1_sum=sum(channel==1), ch_2_sum=sum(channel==2))
-#mre %>% mutate(overlapping=overlap_check(x,y,lead(x, n=first(ch_2_sum)),lead(y, n=first(ch_2_sum)),lead(radius, n=first(ch_2_sum))))
-#mre %>% mutate(within_group_sum=sum(channel==1))
-
-```
-
-
-```{r}
-overlap_check <- function(x1, y1, x2, y2, r2, print=TRUE) {return((x1-x2)^2 + (y1-y2)^2 < r2^2)}
-
-datasets %>% group_by(AP, channel) %>% mutate(overlapping=sum(overlap_check(x1, y1, ch_2$x, ch_2$y, ch_2$radius)))
-```
-
-
-
-Working!
+Check each trap_2 neuron against all cfos neurons to see if there is overlap. Not reciprocal, only give output for one channel.
 
 ```{r}
 datasets <- datasets %>% mutate(radius=sqrt(area/pi))
