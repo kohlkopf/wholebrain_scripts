@@ -1,0 +1,270 @@
+---
+title: "3 Channel, Separate Regi and Seg | wholebrain"
+subtitle: "Yu Lab | Stowers Institute for Medical Research"
+author: "Kohl Kinning"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  html_notebook:
+    theme: cosmo
+    toc: yes
+    toc_float:
+      collapsed: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+For this document to be useful, you must adjust your RStudio editor settings by changing options in the mneu that comes up from clicking on the gear icon. Uncheck *Show Previews Inline* so that the interactive pot will show in the view pane. Check *Show Output in Console*.
+
+We'll first preform the registration on the sections. Previously we registered the sections to the atlas and called neurons in the same iteration. In an attempt to gain flexibility and remove risk of duplicating counts of neurons, we'll call neurons after determining the correct registrations per sections.
+
+## Initialization
+
+```{r}
+wd <- "D:/2019-05-26_PEA_IAMM_MIX_Trap2_cFos/PEA_PEA/analysis/"
+setwd(wd)
+library(wholebrain)
+library(dplyr)
+library(naturalsort)
+library(stringr)
+```
+
+## Image prep
+
+```{r}
+# get listing
+images <- get.images(file.path("D:/2019-05-26_PEA_IAMM_MIX_Trap2_cFos/PEA_PEA/images/"), type="tif")
+
+```
+
+```{r}
+#set spacing between periods in millimeters
+smp <- 0.06
+```
+
+Next pick several images far apart from each other and manually inspect them for what coordinate they are at by comparing to [Allen atlas](http:/mouse.brain-map.org/experiment/siv/?imageId=102162070) begin when the frontal cortex comes in to view.
+
+```{r}
+inspected <- c(1,10,20,36,46,50,60,81)
+```
+
+Visualize the sections with the image viewer.
+
+```{r}
+imshow(images[50])
+for(i in 1:length(inspected)){imshow(images[inspected[i]])}
+```
+
+Assign bregma coordinates for each image in `r inspected`
+
+```{r}
+smp.coord <- c(3.045, 2.445, 1.845, 0.845, 0.145, .020, -.90, -2.55)
+```
+
+
+Construct the vector of coordinates, with a coordinate corresponding with each section in `r images` vector
+
+```{r}
+coord <- map.to.atlas(image.number=inspected, 
+                      coordinate=smp.coord, 
+                      sampling.period=smp, 
+                      number.of.sections=length(images)
+)
+
+#plot the coords to ensure nothing is way off
+plot(coord[0:length(images)])
+```
+
+Use this if there is a lingering plot in the Viewer pane.
+
+```{r}
+dev.off()
+```
+
+
+## Registration
+
+Load Qiang's filters, we'll use the same segmentation filters for all of the brains that we'll be comparing. This .RData file actually has the brain filter and the neuron filter. 
+
+```{r}
+load(file= "U:/qiq/2019-05-26_PEA_IAMM_MIX_Trap2_cFos/Processed/PEA_PEA/saved_filters/initial_filters.RData")
+brain_seg$filter$resize <- 0.1
+brain_seg$filter$Max <- 23000
+```
+
+
+
+Begin the processing. First wholebrain will attempt auto-registration. You'll see the registration on the right, and the  reference atlas on the left. You'll then see a prompt in the console asking which points you would like to remove. Remove any points that are incorrect. After pressing Enter, you can add your own registration points. The fewer the better--the software does a good job connecting the dots. I'll usually add 8+/-2, mainly for the internal feature scaling and alignment.
+
+You'll have to specify the indexes for the images you wish to register.
+
+```{r}
+dev.off()
+
+for(i in c(29,45)){
+  input.points=""
+  regi <- registration(images[i], coordinate=coord[i], filter=brain_seg$filter, display=TRUE, channel=0, batch.mode=TRUE)
+  input.points<-readline(prompt="Input a vector of points to remove, enter if OK: ")
+  if(!(input.points == "")){regi <- remove.corrpoints(regi, eval(parse(text=input.points)))}
+  regi <- add.corrpoints(regi)
+  #re-register with added/removed points
+  regi <- registration(images[i], coordinate=coord[i], filter=brain_seg$filter, display=TRUE, channel=0, correspondance=regi)
+  dev.off()
+
+  #create directory, save the registration info
+  if(!dir.exists(file.path(wd, "/specific_reg/"))){dir.create(file.path(wd, "/specific_reg/"), showWarnings=FALSE)}
+  save(file=paste0(wd, "/specific_reg/", tools::file_path_sans_ext(basename(images[i])), "_registration_info.RData"), regi)
+}
+```
+
+
+Now we've got a pile of out folders named `output***` in the working directory and registration information for each section. Using these files, we'll assign neurons to regions (informed by the atlas) and quantify.
+
+## Segmentation
+
+The hard part is over with. Now we load all of the individual registrations, call the neurons and the regions in which they reside, and accumulate this all in to one tidy df.
+
+```{r}
+dev.off()
+```
+
+Get a list of the registration files, extract the index number from the file name.
+
+```{r}
+file_list <- naturalsort(list.files(paste0(wd, "specific_reg"), full.names = TRUE))
+
+df_list <- lapply(file_list, function(x) mget(load(x)))
+str(registration)
+
+suffixes <- NULL
+for(registration in file_list){
+  load(registration)
+  suffix <- as.numeric(as.character(str_match(registration, "([0-9]{3})_")[2]))
+  assign(paste0("regi_", suffix), regi)
+  suffixes <- c(suffixes, as.numeric(suffix))
+}
+```
+
+
+Channel 1 segmentation
+
+```{r}
+# load neuron_seg from file
+load(paste0(wd, "/saved_filters/filters_Channel1.RData"))
+
+for(suffix in suffixes){
+  seg <- segment(images[suffix], display=FALSE, filter=neuron_seg$filter, channel=1)
+  # loads image in output* folders, need to be in working directory
+  output <- inspect.registration(get(paste0("regi_", suffix)), seg, soma=TRUE, forward.warps=TRUE, device=FALSE, batch.mode=TRUE)
+  assign(paste0("dataset_ch1_", suffix), output)
+  
+}
+
+bound_dataset_ch1 <- bind_rows(mget(paste0("dataset_ch1_", suffixes)), .id = "column_label")
+bound_dataset_ch1$animal <- "PEA_PEA"
+bound_dataset_ch1$channel <- "cfos"
+length(table(bound_dataset_ch1$image))
+```
+
+Channel 2 segmentation
+
+```{r}
+# load neuron_seg from file
+load(paste0(wd, "/saved_filters/filters_Channel2.RData"))
+
+for(suffix in suffixes){
+  seg <- segment(images[suffix], display=FALSE, filter=neuron_seg$filter, channel=2)
+  # loads image in output* folders, need to be in working directory
+  output <- inspect.registration(get(paste0("regi_", suffix)), seg, soma=TRUE, forward.warps=TRUE, device=FALSE, batch.mode=TRUE)
+  assign(paste0("dataset_ch2_", suffix), output)
+}
+
+
+bound_dataset_ch2 <- bind_rows(mget(paste0("dataset_ch2_", suffixes)), .id = "column_label")
+bound_dataset_ch2$animal <- "PEA_PEA"
+bound_dataset_ch2$channel <- "trap2"
+length(table(bound_dataset_ch2$image))
+```
+
+Merge the two tables corresponding to each channel
+
+```{r}
+datasets <- bind_rows(bound_dataset_ch1, bound_dataset_ch2)
+```
+
+
+Save final table
+
+```{r}
+if(!dir.exists(file.path(wd, "dataset_post_registration/"))){dir.create(file.path(wd, "dataset_post_registration/"), showWarnings = FALSE)}
+write.table(file = file.path(wd, "dataset_post_registration/three_channel_dataset.csv"), datasets, sep = ",")
+```
+
+## Overlapping neurons
+
+
+Check each trap_2 neuron against all cfos neurons to see if there is overlap. Not reciprocal, only give output for one channel.
+
+```{r}
+datasets <- datasets %>% mutate(radius=sqrt(area/pi))
+
+datasets %>% group_by(channel) %>% summarize(n())
+
+overlap_check <- function(x1, y1, x2, y2, r2, print=TRUE) {return((x1-x2)^2 + (y1-y2)^2 < r2^2)}
+
+cum_overlap <- vector()
+for(ap in unique(datasets$AP)){
+  overlap_ch1 <- vector()
+  for(coord in 1:length((datasets %>% filter(channel=="trap2" & AP==ap))$x)){
+    overlap_ch1 <- c(overlap_ch1, 
+                     sum(overlap_check((datasets %>% filter(channel=="trap2" & AP==ap))$x[coord], 
+                                       (datasets %>% filter(channel=="trap2" & AP==ap))$y[coord], 
+                                       (datasets %>% filter(channel=="cfos" & AP==ap))$x, 
+                                       (datasets %>% filter(channel=="cfos" & AP==ap))$y, 
+                                       (datasets %>% filter(channel=="cfos" & AP==ap))$radius)
+                         )
+                     )
+  }
+  cum_overlap <- c(cum_overlap, overlap_ch1)
+}
+
+#should only overlap one, overlap in signal implies same neuron labelled
+max(cum_overlap)
+
+#do we have readout for every neuron in channel 1?
+length(cum_overlap)
+nrow(datasets %>% filter(channel=="trap2"))
+nrow(datasets %>% filter(channel=="cfos"))
+
+#of channel one, how many are overlapping in each section?
+cbind(datasets %>% filter(channel=="trap2"), cum_overlap) %>% group_by(AP) %>% summarize(sum(cum_overlap))
+#how many by region?
+cbind(datasets %>% filter(channel=="trap2"), cum_overlap) %>% group_by(name) %>% summarize(sum(cum_overlap), n(), 100*(sum(cum_overlap)/n())) %>% filter(grepl("Olfactory|olfactory", name))
+```
+
+
+## Visualization
+
+### glassbrain()
+
+3d brain with neurons plotted.
+
+```{r}
+glassbrain(bound_dataset_ch1)
+scene3d()
+```
+
+Dot plot quantification by region and hemisphere.
+
+```{r}
+dot.plot(cbind(datasets %>% filter(channel==1), cum_overlap) %>% filter(cum_overlap==1))
+```
+
+```{r}
+normalize.volume(cbind(datasets %>% filter(channel==1), cum_overlap) %>% filter(cum_overlap==1))
+```
+
+Same as above, but with only the regions containing the word olfactory.
+
+```{r}
+glassbrain(datasets[grep("Olfactory|olfactory", datasets$name),])
+```
